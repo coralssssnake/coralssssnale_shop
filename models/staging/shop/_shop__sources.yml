@@ -2,8 +2,8 @@ version: 2
 
 sources:
   - name: shop
-    description: "OLTP-база интернет-магазина (PostgreSQL, схема public). Сырые данные: dbt их только читает."
-    schema: public
+    description: "Сырые таблицы OLTP-базы магазина, загруженные в Greenplum (база dwh, схема raw) сервисом loader. dbt их только читает."
+    schema: raw
     tables:
       - name: customers
         description: "Клиенты. Одна строка — один зарегистрированный клиент."

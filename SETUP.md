@@ -9,12 +9,14 @@
 ```text
 ваш компьютер
 ├── Git     — скачивает проект с GitHub и сохраняет вашу работу
-└── Docker  — запускает две программы в контейнерах:
-    ├── postgres — база интернет-магазина (порт 5436)
-    └── dbt      — собирает витрины в этой базе
+└── Docker  — запускает программы в контейнерах:
+    ├── postgres  — рабочая (OLTP) база интернет-магазина, порт 5436
+    ├── greenplum — хранилище, где лежит аналитический слой, порт 5440
+    ├── loader    — при запуске копирует сырые таблицы из postgres в greenplum
+    └── dbt       — строит витрины в greenplum
 ```
 
-Устанавливать Python, PostgreSQL и dbt на компьютер **не нужно**: всё работает внутри Docker.
+Устанавливать Python, PostgreSQL, Greenplum и dbt на компьютер **не нужно**: всё работает внутри Docker.
 
 ## Что понадобится
 
@@ -23,7 +25,7 @@
 | Git | Скачать проект и сдать домашку | `git --version` |
 | Docker Desktop | Запустить базу и dbt | `docker compose version` |
 | DBeaver | Смотреть таблицы в базе (уже есть с прошлых практик) | — |
-| ~3 ГБ свободного места и интернет | Скачать образы при первом запуске | — |
+| ~5 ГБ свободного места, 8 ГБ оперативной памяти и интернет | Скачать образы при первом запуске. Образ Greenplum (~2 ГБ) у вас уже есть, если запускали практику 3 | — |
 
 Все команды ниже вводятся в терминале:
 
@@ -74,7 +76,7 @@ docker run --rm hello-world
 
 ## Шаг 3. Освободить ресурсы от прошлых стендов
 
-Стенд практики 3 (Greenplum + ClickHouse) занимает много памяти. Если он ещё работает, остановите его. Данные при этом сохранятся:
+В нашем стенде свой Greenplum. Если ещё работает стенд практики 3 (Greenplum + ClickHouse), два Greenplum одновременно могут не поместиться в память. Остановите старый стенд, данные при этом сохранятся:
 
 ```bash
 cd <папка практики 3>
@@ -103,19 +105,29 @@ cd store
 
 Появится папка `store` со всеми файлами проекта. **Все дальнейшие команды выполняются из этой папки.** Если терминал закрыли, вернитесь в неё: `cd study/store`. Проверить, где вы находитесь, можно командой `pwd` (на Windows — `cd` без аргументов). В папке должен лежать файл `compose.yaml`.
 
-## Шаг 5. Запустить базу
+## Шаг 5. Запустить базы и загрузить данные в хранилище
 
 ```bash
-docker compose up -d postgres
-docker compose ps
+docker compose up -d
 ```
 
-Первый запуск скачивает образ PostgreSQL и загружает данные магазина, это займёт до минуты. Повторяйте `docker compose ps`, пока в колонке `STATUS` не появится `(healthy)`:
+Команда запускает PostgreSQL и Greenplum, а когда обе базы готовы — сервис `loader`. Он копирует сырые таблицы магазина в Greenplum и завершается. При первом запуске скачиваются образы, это займёт несколько минут. Затем проверьте результат загрузки:
+
+```bash
+docker compose logs loader
+```
+
+Повторяйте команду, пока в конце не появится:
 
 ```text
-NAME                  ...   STATUS                    PORTS
-dbt_shop-postgres-1   ...   Up 20 seconds (healthy)   0.0.0.0:5436->5432/tcp
+loader-1  | Готово: в Greenplum, база dwh, схема raw загружено строк:
+loader-1  | orders 141
+loader-1  | order_items 444
+loader-1  | payments 160
+loader-1  | customers 40
 ```
+
+Состояние контейнеров показывает `docker compose ps -a`. `postgres` и `greenplum` должны быть `Up … (healthy)`, `loader` — `Exited (0)`: он отработал и остановился, так и должно быть.
 
 ## Шаг 6. Собрать dbt и проверить подключение
 
@@ -134,17 +146,19 @@ All checks passed!
 
 ## Шаг 7. Подключить DBeaver
 
-Создайте новое подключение: **База данных → Новое соединение → PostgreSQL**.
+Создайте два подключения: **База данных → Новое соединение**. Тип — **PostgreSQL** для обоих: Greenplum понимает тот же протокол. Можно выбрать и тип Greenplum, если он есть в вашем DBeaver.
 
-| Параметр | Значение |
-|---|---|
-| Хост | `localhost` |
-| Порт | **`5436`** — не 5435 и не 5438, это порты прошлых практик |
-| База данных | `shop` |
-| Пользователь | `student` |
-| Пароль | `studentpass` |
+| Параметр | OLTP (PostgreSQL) | DWH (Greenplum) |
+|---|---|---|
+| Хост | `localhost` | `localhost` |
+| Порт | **`5436`** | **`5440`** |
+| База данных | `shop` | `dwh` |
+| Пользователь | `student` | `gpadmin` |
+| Пароль | `studentpass` | пустой |
 
-Нажмите **Тест соединения**. В схеме `public` должны быть таблицы `customers`, `orders`, `payments` и другие. Схемы `analytics_*` появятся после первого запуска dbt.
+Порты прошлых практик (5435, 5438, 5439) здесь не подходят.
+
+Нажмите **Тест соединения** в каждом. В OLTP в схеме `public` должны быть таблицы `customers`, `orders`, `payments` и другие. В DWH в схеме `raw` должны быть их копии. Схемы `analytics_*` в DWH появятся после первого запуска dbt.
 
 ## Как писать команды dbt короче
 
@@ -168,11 +182,12 @@ function dbt { docker compose run --rm dbt @args }
 
 | Что сделать | Команда |
 |---|---|
-| Начать работу | Запустить Docker Desktop, перейти в папку `store`, выполнить `docker compose up -d postgres` |
+| Начать работу | Запустить Docker Desktop, перейти в папку `store`, выполнить `docker compose up -d` |
 | Закончить работу (данные сохранятся) | `docker compose down` |
-| Начать с чистой базы (**удалит** все таблицы, которые построил dbt) | `docker compose down -v`, затем `docker compose up -d postgres` |
+| Заново загрузить сырые данные в Greenplum | `docker compose run --rm loader` |
+| Начать с чистых баз (**удалит** все таблицы, которые построил dbt) | `docker compose down -v`, затем `docker compose up -d` |
 
-Ваш код хранится в файлах в папке `store` и в Git, а не в базе. Поэтому `down -v` код не удаляет: следующий `dbt build` заново построит все витрины.
+Ваш код хранится в файлах в папке `store` и в Git, а не в базе. Поэтому `down -v` код не удаляет: после повторной загрузки следующий `dbt build` заново построит все витрины.
 
 ## Сохранять работу в Git
 
@@ -198,14 +213,17 @@ git config --global user.email "ваша@почта"
 |---|---|---|
 | `Cannot connect to the Docker daemon` / `error during connect` | Docker Desktop не запущен | Запустить и дождаться `Engine running` |
 | `no configuration file provided: not found` | Команда выполнена не из папки `store` | `cd` в папку, где лежит `compose.yaml` |
-| `port is already allocated` / `address already in use` | Порт 5436 занят другой программой | `PG_PORT=5546 docker compose up -d postgres` (в PowerShell: `$env:PG_PORT=5546; docker compose up -d postgres`) и порт `5546` в DBeaver. Для dbt менять ничего не нужно |
+| `port is already allocated` / `address already in use` | Порт 5436 или 5440 занят, например стендом прошлой практики | Остановить старый стенд (шаг 3) или задать другие порты: `PG_PORT=5546 GP_PORT=5540 docker compose up -d` (в PowerShell: `$env:PG_PORT=5546; $env:GP_PORT=5540; docker compose up -d`) и указать их в DBeaver. Для dbt менять ничего не нужно |
+| `docker compose logs loader` пустой или нет строки «Готово» | Greenplum ещё запускается | Подождать минуту и повторить. Если `loader` в `docker compose ps -a` в состоянии `Exited (1)`, прочитать ошибку в логе и выполнить `docker compose run --rm loader` |
+| `greenplum` долго не становится `healthy` или перезапускается | Не хватает памяти | Закрыть лишние программы и стенды, в Docker Desktop → Settings → Resources выделить не меньше 4 ГБ памяти |
+| dbt: `relation "raw.orders" does not exist` | Данные не загружены в Greenplum | `docker compose run --rm loader` |
 | `Bind for 0.0.0.0:8080 failed` при `docs serve` | Порт 8080 занят | Добавить `DOCS_PORT=8081` перед командой `docker compose run … docs serve …` (в PowerShell: `$env:DOCS_PORT=8081;` перед командой) и открыть http://localhost:8081. Саму команду менять не нужно |
 | Сборка `docker compose build dbt` падает на `pip install` | Нет доступа к интернету или к PyPI | Проверить интернет, отключить VPN или прокси, повторить |
 | `permission denied ... docker.sock` (Linux) | Пользователь не в группе `docker` | `sudo usermod -aG docker $USER` и перезайти |
 | `WSL 2 installation is incomplete` (Windows) | Не установлен WSL | `wsl --install` от администратора, перезагрузка |
 | `fatal: destination path 'store' already exists` | Проект уже скачан | Перейти в существующую папку: `cd store` |
-| DBeaver: `password authentication failed` или нет таблиц | Подключение идёт к базе прошлой практики | Проверить порт: **5436** |
-| `Could not connect to the database` в `dbt debug` | База ещё стартует | Подождать `(healthy)` в `docker compose ps` и повторить |
+| DBeaver: `password authentication failed` или нет таблиц | Подключение идёт к базе прошлой практики | Проверить порты: OLTP — **5436**, DWH — **5440** |
+| `Could not connect to the database` в `dbt debug` | Greenplum ещё стартует | Подождать `(healthy)` в `docker compose ps` и повторить |
 | dbt: `column "todo" does not exist` | В модели остались незаполненные `TODO` | Это нормально: заполните задание |
 | Мало места на диске | Старые образы и тома | `docker system df` — посмотреть, `docker image prune` — удалить неиспользуемые образы |
 
@@ -214,7 +232,7 @@ git config --global user.email "ваша@почта"
 <details>
 <summary>Запуск dbt без Docker (необязательно)</summary>
 
-Базу всё равно запускайте через Docker (шаг 5). dbt можно поставить локально, если у вас Python **3.10–3.13**. На 3.14 dbt пока не работает.
+Базы всё равно запускайте через Docker (шаг 5). dbt можно поставить локально, если у вас Python **3.10–3.13**. На 3.14 dbt пока не работает.
 
 ```bash
 python3.12 -m venv .venv
@@ -223,5 +241,5 @@ pip install -r requirements.txt
 dbt debug
 ```
 
-Файл `profiles.yml` dbt возьмёт из папки проекта; подключение по умолчанию — `localhost:5436`.
+Файл `profiles.yml` dbt возьмёт из папки проекта; подключение по умолчанию — Greenplum на `localhost:5440`.
 </details>
