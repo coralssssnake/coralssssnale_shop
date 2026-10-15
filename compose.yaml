@@ -1,0 +1,42 @@
+name: dbt_shop
+
+services:
+  # OLTP-база интернет-магазина: те же данные, что в практике 2.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: shop
+      POSTGRES_USER: student
+      POSTGRES_PASSWORD: studentpass
+    ports:
+      - "${PG_PORT:-5436}:5432"
+    volumes:
+      - dbt_shop_pgdata:/var/lib/postgresql/data
+      - ./init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U student -d shop"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # dbt в контейнере. Запуск: docker compose run --rm dbt <команда>
+  dbt:
+    build: .
+    image: dbt-shop:1.10
+    profiles: ["tools"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DBT_HOST: postgres
+      DBT_PORT: "5432"
+      DBT_PROFILES_DIR: /project
+      DBT_SEND_ANONYMOUS_USAGE_STATS: "false"
+      DBT_VERSION_CHECK: "false"
+    volumes:
+      - .:/project
+    ports:
+      - "${DOCS_PORT:-8080}:8080"
+
+volumes:
+  dbt_shop_pgdata:

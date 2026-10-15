@@ -1,0 +1,24 @@
+version: 2
+
+# Задание 3. Описания и тесты staging-моделей.
+# Для stg_shop__orders часть тестов уже есть — допишите остальное по образцу.
+
+models:
+  - name: stg_shop__orders
+    description: "Заказы из источника: одна строка — один заказ."
+    columns:
+      - name: order_id
+        description: "Номер заказа."
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: "Клиент, оформивший заказ."
+        data_tests:
+          - not_null
+          # TODO: relationships — каждый customer_id есть в stg_shop__customers
+      - name: order_status
+        description: "Статус заказа."
+        # TODO: accepted_values
+      - name: order_amount
+        description: "Сумма заказа в рублях после скидок."
+
+  # TODO: stg_shop__customers, stg_shop__order_items, stg_shop__payments

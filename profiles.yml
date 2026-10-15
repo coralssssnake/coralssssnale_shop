@@ -1,0 +1,14 @@
+# Подключение к учебной базе. В Docker хост и порт приходят из compose.yaml,
+# при локальном dbt используются значения по умолчанию: localhost:5436.
+dbt_shop:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PORT', '5436') | as_number }}"
+      user: student
+      password: studentpass
+      dbname: shop
+      schema: analytics
+      threads: 4

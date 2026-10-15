@@ -1,0 +1,14 @@
+-- Задание 2. Staging платёжных операций: одна строка — одна операция.
+-- Возврат записан в источнике успешной операцией с отрицательной суммой.
+with source as (
+    select * from {{ source('shop', 'payments') }}
+)
+
+select
+    payment_id,
+    order_id,
+    paid_at,
+    payment_status,
+    amount,
+    TODO                            as is_refund   -- true для возврата
+from source
