@@ -11,10 +11,18 @@ payments as (
 order_payments as (
     select
         order_id,
-        TODO    as successful_payments_count,  -- успешные оплаты без возвратов
-        TODO    as paid_amount,                -- их сумма; 0, если их нет
-        TODO    as refunded_amount,            -- сумма возвратов положительным числом; 0, если их нет
-        TODO    as first_paid_at               -- время первой успешной оплаты
+        count(*) filter (
+            where payment_status = 'success' and not is_refund
+        )    as successful_payments_count,  -- успешные оплаты без возвратов
+        coalesce(sum(amount) filter (
+            where payment_status = 'success' and not is_refund
+        ), 0)    as paid_amount,                -- их сумма; 0, если их нет
+        coalesce(-sum(amount) filter (
+            where payment_status = 'success' and is_refund
+        ), 0)    as refunded_amount,            -- сумма возвратов положительным числом; 0, если их нет
+        min(paid_at) filter (
+            where payment_status = 'success' and not is_refund
+        )    as first_paid_at               -- время первой успешной оплаты
     from payments
     group by order_id
 )
@@ -27,12 +35,12 @@ select
     o.order_status,
     o.order_amount,
     o.is_test_order,
-    TODO    as successful_payments_count,   -- 0 вместо null
-    TODO    as paid_amount,
-    TODO    as refunded_amount,
-    TODO    as net_paid_amount,             -- оплачено минус возвращено
+    coalesce(p.successful_payments_count, 0)    as successful_payments_count,   -- 0 вместо null
+    coalesce(p.paid_amount, 0)    as paid_amount,
+    coalesce(p.refunded_amount, 0)    as refunded_amount,
+    coalesce(p.paid_amount, 0) - coalesce(p.refunded_amount, 0)    as net_paid_amount,             -- оплачено минус возвращено
     p.first_paid_at,
-    TODO    as is_confirmed                 -- статус paid и хотя бы одна успешная оплата
+    (o.order_status = 'paid' and coalesce(p.successful_payments_count, 0) > 0)    as is_confirmed                 -- статус paid и хотя бы одна успешная оплата
 from orders as o
-TODO join order_payments as p
+left join order_payments as p
     on p.order_id = o.order_id

@@ -14,11 +14,79 @@ models:
         description: "Клиент, оформивший заказ."
         data_tests:
           - not_null
-          # TODO: relationships — каждый customer_id есть в stg_shop__customers
+          - relationships:
+              arguments:
+                to: ref('stg_shop__customers')
+                field: customer_id
       - name: order_status
         description: "Статус заказа."
-        # TODO: accepted_values
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'pending', 'returned', 'cancelled', 'test']
       - name: order_amount
         description: "Сумма заказа в рублях после скидок."
+        data_tests: [non_negative]
 
-  # TODO: stg_shop__customers, stg_shop__order_items, stg_shop__payments
+  - name: stg_shop__customers
+    description: "Клиенты: одна строка — один клиент."
+    columns:
+      - name: customer_id
+        description: "Идентификатор клиента."
+        data_tests: [unique, not_null]
+      - name: registration_date
+        description: "Дата регистрации без времени."
+        data_tests: [not_null]
+      - name: acquisition_channel
+        description: "Канал привлечения."
+        data_tests: [not_null]
+
+  - name: stg_shop__order_items
+    description: "Позиции заказов: одна строка — один товар в заказе."
+    columns:
+      - name: order_item_id
+        description: "Суррогатный ключ: order_id-product_id."
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: "Заказ."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shop__orders')
+                field: order_id
+      - name: product_id
+        description: "Товар."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shop__products')
+                field: product_id
+      - name: quantity
+        description: "Количество единиц товара."
+        data_tests: [not_null, non_negative]
+      - name: line_amount
+        description: "Сумма позиции после скидки."
+        data_tests: [non_negative]
+
+  - name: stg_shop__payments
+    description: "Платёжные операции: одна строка — одна операция."
+    columns:
+      - name: payment_id
+        description: "Идентификатор операции."
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: "Заказ."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_shop__orders')
+                field: order_id
+      - name: payment_status
+        description: "Статус операции."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['success', 'failed', 'pending']

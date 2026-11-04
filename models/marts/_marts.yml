@@ -1,0 +1,82 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: "Факт заказов без тестовых. Одна строка — один заказ."
+    columns:
+      - name: order_id
+        description: "Номер заказа."
+        data_tests: [unique, not_null]
+      - name: customer_id
+        description: "Клиент."
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers')
+                field: customer_id
+      - name: order_status
+        description: "Статус заказа."
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['paid', 'pending', 'returned', 'cancelled']
+              config:
+                severity: warn
+      - name: is_confirmed
+        description: '{{ doc("confirmed_order") }}'
+      - name: items_count
+        description: "Число разных товаров в заказе."
+        data_tests: [non_negative]
+
+  - name: fct_order_items
+    description: "Позиции заказов (кроме тестовых). Одна строка — товар в заказе."
+    columns:
+      - name: order_item_id
+        description: "Суррогатный ключ позиции."
+        data_tests: [unique, not_null]
+      - name: order_id
+        description: "Заказ."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('fct_orders')
+                field: order_id
+      - name: product_id
+        description: "Товар."
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('dim_products')
+                field: product_id
+      - name: is_confirmed
+        description: '{{ doc("confirmed_order") }}'
+      - name: line_amount
+        description: "Сумма позиции после скидки."
+        data_tests: [non_negative]
+
+  - name: dim_customers
+    description: "Клиенты, включая не купивших. Одна строка — один клиент."
+    columns:
+      - name: customer_id
+        description: "Идентификатор клиента."
+        data_tests: [unique, not_null]
+      - name: is_buyer
+        description: "Есть ли хотя бы один подтверждённый заказ."
+        data_tests: [not_null]
+
+  - name: dim_products
+    description: "Товары с иерархией категорий. Одна строка — один товар."
+    columns:
+      - name: product_id
+        description: "Идентификатор товара."
+        data_tests: [unique, not_null]
+      - name: root_category_name
+        description: "Верхний уровень категории (Electronics/Home)."
+
+  - name: dim_dates
+    description: "Календарь на все даты заказов."
+    columns:
+      - name: date_day
+        description: "Дата."
+        data_tests: [unique, not_null]
