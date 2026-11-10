@@ -2,7 +2,7 @@ version: 2
 
 models:
   - name: fct_orders
-    description: "Факт заказов без тестовых. Одна строка — один заказ."
+    description: "Факт заказов без тестовых. Одна строка - один заказ."
     columns:
       - name: order_id
         description: "Номер заказа."
